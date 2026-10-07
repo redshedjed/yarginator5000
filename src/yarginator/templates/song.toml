@@ -1,0 +1,79 @@
+# yarginator song config. Paths are relative to this folder (the chart file is in the song folder).
+
+[song]
+name = "$name"
+artist = "$artist"
+album = ""
+genre = ""
+year = ""
+charter = "$charter"
+
+[chart]
+file = "notes.mid"            # read if it exists (charting on top of it), written on every step
+# What this song has. Only these get chart + REAPER tracks (BEAT, EVENTS, VENUE always do); add one
+# back and re-run to get its track. Choose from: drums guitar rhythm bass keys (pro keys) keys5
+# (5-lane) vocals (PART VOCALS) harmonies (HARM1-3). Remove the line to allow everything.
+instruments = $instruments
+
+[audio]
+offset_s = 0.0                # analysis only: shift stems later(+)/earlier(-) vs the chart. Audio is never moved.
+
+[stems]
+$stems
+[tempo]
+# click: locked tempo plus an offset measure that ends on the first real downbeat (modern click-tracked songs)
+# beats: one tempo change per detected beat (older / live songs)
+# chart: keep the tempo map already in notes.mid (pick this once you've tuned tempo in REAPER)
+mode = "$tempo_mode"
+${tempo_lines}beats_per_bar = 4
+stem = "song"                 # full mix finds the true start even when drums enter late; falls back to drums
+bpm_range = [80, 180]         # detected tempo is doubled/halved into this range (fixes half-time locks)
+
+# One table per part. Remove a part or set enabled = false to skip it.
+# Extra keys are passed to the generator as options.
+[parts.events]
+[parts.beat]
+[parts.drums]
+# stems = ["drums"]           # stem keys mixed for analysis, e.g. ["kick", "snare", "kit"] for multitracks
+# threshold = { kick = "auto", snare = "auto", cymbal = 0.3, tom = 0.3 }   # 0-1, higher = fewer hits
+# crash_score = 1.0           # accent evidence a cymbal needs to become a crash (higher = fewer)
+# ride = "never"              # timekeeping on the hi-hat; "auto" puts clearly different sections on the ride
+# toms = "pitch"              # tom colours high -> low by pitch; "sound" uses the tom templates
+# kick_2x_ms = 85             # Expert kicks closer together than this become 2x-pedal kicks
+# fills = true                # drum fills over tom runs that land on a crash
+# animation = true            # drum animation notes + [idle]/[play]
+[parts.guitar]
+[parts.rhythm]
+[parts.bass]
+# lowest_note = "auto"        # any string count / tuning, read from the stem; or "E1" 4-string,
+#                             # "D1" drop D, "B0" 5/6-string, "A0" drop-A 5-string
+# highest_note = "auto"       # widened for a 6-string's high register automatically; or e.g. "C5"
+# ghosts = "expert"           # ghost notes on Expert only; "all" / "none"
+[parts.prokeys]
+# midi = "keys.mid"           # chart from your own MIDI transcription instead of the keys stem
+# rh_span = 12                # right hand: notes within this many semitones of the top voice
+# shift_cost = 6.0            # higher = fewer range shifts (more notes moved an octave instead)
+# animation = true            # [idle]/[play] events + PART KEYS_ANIM_RH
+[parts.vocals]
+min_confidence = 0.6          # below this, a syllable is flagged for review
+[parts.harm1]
+[parts.harm2]
+[parts.harm3]
+
+[lighting]
+generator = "default"
+preset = "default"            # built-in name, or a path like "presets/my_rig.toml"
+# stem = "song"               # stem for energy analysis when the chart has no [section] events
+
+[reaper]
+$template
+[song_ini]
+# Extra keys copied straight into song.ini, e.g.
+# preview_start_time = 45000
+# loading_phrase = "..."
+
+[separation]
+# Models for `yarginator separate` (audio-separator --list_models lists them all):
+# vocals_model = "model_bs_roformer_ep_317_sdr_12.9755.ckpt"     # mix -> vocals + instrumental
+# instruments_model = "htdemucs_6s.yaml"                          # instrumental -> drums bass guitar piano other
+# drums_model = "MDX23C-DrumSep-aufr33-jarredou.ckpt"             # --drum-split: kick snare toms hihat ride crash

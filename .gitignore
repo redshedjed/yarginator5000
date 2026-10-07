@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv*/
+build/
+dist/
+.pytest_cache/
+
+# Per-song working data (if songs are kept inside the repo)
+songs/
+.cache/
+.history/

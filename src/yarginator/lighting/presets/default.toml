@@ -1,0 +1,43 @@
+# Default light show. Copy this file into a song folder (or anywhere) and point
+# [lighting] preset = "my_rig.toml" at it to customise.
+
+# Section name keyword -> lighting cue. Names are lower-cased with spaces/digits/underscores
+# removed before matching ("Chorus 2" -> "chorus", "prc_pre_chorus1" -> "prechorus").
+# First keyword contained in the name wins, so put more specific keywords first.
+[sections]
+intro = "intro"
+prechorus = "manual_warm"
+chorus = "chorus"
+verse = "verse"
+bridge = "manual_cool"
+solo = "frenzy"
+breakdown = "stomp"
+build = "sweep"
+outro = "loop_cool"
+ending = "loop_cool"
+default = "loop_warm"          # anything unmatched
+
+# Used when the chart has no [section] events: the energy stem is split into chunks of
+# `segment_bars` bars and each chunk is graded against the song's median loudness.
+[energy]
+segment_bars = 4
+high_db = 3.0                  # >= median + high_db -> high
+low_db = -6.0                  # <= median + low_db  -> low
+high = "frenzy"
+mid = "loop_warm"
+low = "silhouettes"
+
+# Keyframed cues (manual_warm/cool, dischord, stomp) step to their next look on these.
+[keyframes]
+every_beats = 2
+
+# A short accent cue right at the start of a section, before its main cue takes over.
+[accents]
+chorus = { cue = "flare_fast", beats = 1 }
+solo = { cue = "strobe_fast", beats = 2 }
+
+[fog]
+on_sections = ["chorus", "solo"]   # [FogOn] at these sections, [FogOff] at the next section
+
+[end]
+cue = "blackout_slow"          # at [music_end]; "" to skip
