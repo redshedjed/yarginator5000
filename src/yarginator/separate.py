@@ -7,6 +7,8 @@ Three passes, each a model from the UVR / audio-separator catalogue:
 2. instruments: the instrumental -> drums, bass, guitar, piano (as "keys"), other (Demucs v4 6-stem).
    Running it on the instrumental instead of the mix keeps vocal bleed out of the instrument stems.
 3. drum split (optional): drums -> kick, snare, toms, hihat, ride, crash (MDX23C DrumSep).
+4. vocal split (optional): vocals -> lead_vocals + backing_vocals (Mel-Roformer karaoke). Run on the
+   vocal stem, a karaoke model's "vocals" is the lead and its "instrumental" is the backing vocals.
 
 Where it runs (``[separation] device``):
 - ``gpu``: DirectML (any DirectX 12 GPU, AMD included) in its own environment at
@@ -39,6 +41,7 @@ DEFAULTS = {
     "vocals_model": "model_bs_roformer_ep_317_sdr_12.9755.ckpt",
     "instruments_model": "htdemucs_6s.yaml",
     "drums_model": "MDX23C-DrumSep-aufr33-jarredou.ckpt",
+    "vocal_split_model": "mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt",
 }
 # model output label (lower case) -> stem key
 LABELS = {"vocals": "vocals", "instrumental": "instrumental", "drums": "drums", "bass": "bass",
@@ -48,8 +51,12 @@ PASSES = {
     "vocals": ("vocals_model", ("vocals", "instrumental")),
     "instruments": ("instruments_model", ("drums", "bass", "guitar", "keys", "other")),
     "drums": ("drums_model", ("kick", "snare", "toms", "hihat", "ride", "crash")),
+    "vocal_split": ("vocal_split_model", ("lead_vocals", "backing_vocals")),
 }
+# karaoke model labels, when its input is the vocal stem
+VOCAL_SPLIT_LABELS = {"vocals": "lead_vocals", "instrumental": "backing_vocals"}
 DRUM_SPLIT_DIR = "drum_split"
+VOCAL_SPLIT_DIR = "vocal_split"
 GPU_PACKAGES = ["audio-separator[dml]", "setuptools<81"]  # setuptools: librosa/resampy still import pkg_resources
 
 
@@ -139,7 +146,7 @@ def _separate_gpu(src: Path, out_dir: Path, model: str) -> list[Path]:
 
 
 def _run_pass(src: Path, out_dir: Path, model: str, want: tuple[str, ...], force: bool,
-              device: str) -> dict[str, Path]:
+              device: str, labels: dict[str, str] | None = None) -> dict[str, Path]:
     targets = {k: out_dir / f"{k}.flac" for k in want}
     if not force and all(p.exists() for p in targets.values()):
         log.info("separate: %s already done (%s)", model, ", ".join(want))
@@ -155,7 +162,7 @@ def _run_pass(src: Path, out_dir: Path, model: str, want: tuple[str, ...], force
         made = (_separate_gpu if device == "gpu" else _separate_cpu)(src, tmp, model)
         for f in made:
             m = re.search(r"_\(([^)]+)\)", f.stem)
-            key = LABELS.get(m[1].lower()) if m else None
+            key = (labels or LABELS).get(m[1].lower()) if m else None
             if key in targets:
                 shutil.move(str(f), str(targets[key]))
                 out[key] = targets[key]
@@ -175,20 +182,25 @@ def _run_pass(src: Path, out_dir: Path, model: str, want: tuple[str, ...], force
 MVSEP_STEMS = (63, {})
 MVSEP_VOCALS = (40, {"add_opt1": 81})                       # BS Roformer ver 2025.07
 MVSEP_DRUMS = (37, {"add_opt1": 7, "add_opt2": 1})          # MelBand Roformer 6 stems, input is drums only
+MVSEP_KARAOKE = (49, {"add_opt1": 6, "add_opt2": 0})        # BS Roformer by MVSep Team, input used as is (vocals)
 # (substring in MVSEP's file name, stem key): drum parts before "drum", "instrum" before "vocal"
 MVSEP_NAMES = [("kick", "kick"), ("snare", "snare"), ("tom", "toms"), ("hi-hat", "hihat"), ("hihat", "hihat"),
                ("_hh", "hihat"), ("ride", "ride"), ("crash", "crash"), ("cymbal", "cymbals"), ("residual", None),
                ("instrum", "instrumental"), ("vocal", "vocals"), ("bass", "bass"), ("drum", "drums"),
                ("guitar", "guitar"), ("piano", "keys"), ("other", "other")]
+# the karaoke job: "vocals-lead", "vocals-back", and two mixes with the instrumental we don't use
+# ("instrum-only", "back-instrum"). The input is our vocals.flac, so "vocal" alone says nothing.
+MVSEP_KARAOKE_NAMES = [("instrum", None), ("lead", "lead_vocals"), ("back", "backing_vocals")]
 
 
-def mvsep_key(filename: str) -> str | None:
+def mvsep_key(filename: str, names: list[tuple[str, str | None]] | None = None) -> str | None:
     n = Path(filename).stem.lower()
-    return next((key for word, key in MVSEP_NAMES if word in n), None)
+    return next((key for word, key in (names or MVSEP_NAMES) if word in n), None)
 
 
 def _mvsep_pass(client, src: Path, stems_dir: Path, job: tuple[int, dict], want: set[str], force: bool,
-                rename: dict[str, str] | None = None) -> dict[str, Path]:
+                rename: dict[str, str] | None = None,
+                names: list[tuple[str, str | None]] | None = None) -> dict[str, Path]:
     from .mvsep import Job
     import json
     targets = {k: stems_dir / f"{k}.flac" for k in want}
@@ -206,7 +218,7 @@ def _mvsep_pass(client, src: Path, stems_dir: Path, job: tuple[int, dict], want:
         return {}
     out: dict[str, Path] = {}
     for f in files:
-        key = mvsep_key(f.name)
+        key = mvsep_key(f.name, names)
         key = (rename or {}).get(key, key)
         log.info("separate: mvsep %s -> %s", f.name, key or "(not used)")
         if key in targets:
@@ -221,7 +233,8 @@ def _mvsep_pass(client, src: Path, stems_dir: Path, job: tuple[int, dict], want:
 
 
 def separate_mvsep(mix: Path, stems_dir: Path, drum_split: bool = False, force: bool = False,
-                   best_vocals: bool = False, settings: dict | None = None, dry_run: bool = False) -> dict[str, Path]:
+                   best_vocals: bool = False, settings: dict | None = None, dry_run: bool = False,
+                   vocal_split: bool = False) -> dict[str, Path]:
     from .mvsep import Client, Limits, find_token
     cfg = settings or {}
     client = Client(find_token(cfg), Limits.from_config(cfg), dry_run=dry_run)
@@ -235,6 +248,9 @@ def separate_mvsep(mix: Path, stems_dir: Path, drum_split: bool = False, force: 
     if drum_split and "drums" in out:
         out.update(_mvsep_pass(client, out["drums"], stems_dir / DRUM_SPLIT_DIR, MVSEP_DRUMS,
                                {"kick", "snare", "toms", "hihat", "ride", "crash"}, force))
+    if vocal_split and "vocals" in out:
+        out.update(_mvsep_pass(client, out["vocals"], stems_dir / VOCAL_SPLIT_DIR, MVSEP_KARAOKE,
+                               {"lead_vocals", "backing_vocals"}, force, names=MVSEP_KARAOKE_NAMES))
     return out
 
 
@@ -247,7 +263,7 @@ def pick_engine(engine: str) -> str:
 
 
 def separate(mix: Path, stems_dir: Path, drum_split: bool = False, models: dict | None = None,
-             force: bool = False, device: str = "auto") -> dict[str, Path]:
+             force: bool = False, device: str = "auto", vocal_split: bool = False) -> dict[str, Path]:
     """Run the local passes on ``mix``; returns {stem key: file} for everything produced."""
     m = {**DEFAULTS, **(models or {})}
     dev = pick_device(device)
@@ -258,4 +274,7 @@ def separate(mix: Path, stems_dir: Path, drum_split: bool = False, models: dict 
     if drum_split and "drums" in out:
         out.update(_run_pass(out["drums"], stems_dir / DRUM_SPLIT_DIR, m["drums_model"], PASSES["drums"][1],
                              force, dev))
+    if vocal_split and "vocals" in out:
+        out.update(_run_pass(out["vocals"], stems_dir / VOCAL_SPLIT_DIR, m["vocal_split_model"],
+                             PASSES["vocal_split"][1], force, dev, labels=VOCAL_SPLIT_LABELS))
     return out

@@ -72,7 +72,7 @@ def assign_pitches(est: list) -> list[int]:
 class VocalPitchCharter(PartCharter):
     key = "vocals"
     track_names = (instruments.VOCALS,)
-    stem_keys = ("vocals",)
+    stem_keys = ("vocals", "lead_vocals")
     description = "Pitches for already-timed lyrics, from the vocal stem (pyin + harmonic-sum fallback)"
 
     def is_charted(self, track) -> bool:
@@ -127,6 +127,6 @@ def _harmony(n: int, stems: tuple[str, ...]) -> type[VocalPitchCharter]:
     return register(cls)
 
 
-Harmony1Charter = _harmony(1, ("harm1", "vocals"))
-Harmony2Charter = _harmony(2, ("harm2",))
-Harmony3Charter = _harmony(3, ("harm3", "harm2"))
+Harmony1Charter = _harmony(1, ("harm1", "lead_vocals", "vocals"))
+Harmony2Charter = _harmony(2, ("harm2", "backing_vocals"))
+Harmony3Charter = _harmony(3, ("harm3", "harm2", "backing_vocals"))

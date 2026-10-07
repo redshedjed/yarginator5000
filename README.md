@@ -49,8 +49,12 @@ Band - Song\
 - `separate` runs three passes on the CPU (expect several minutes a song): BS-RoFormer for vocals /
   instrumental, Demucs 6-stem on the instrumental for drums / bass / guitar / keys / other, and with
   `--drum-split` MDX23C DrumSep for kick / snare / toms / hihat / ride / crash (in `stems\drum_split`).
+  `--vocal-split` (or `[separation] vocal_split = true`) runs a Mel-Roformer karaoke model on the vocal
+  stem for `lead_vocals` and `backing_vocals` (in `stemsocal_split`). HARM1 then reads the lead stem
+  and HARM2 / HARM3 the backing stem, and an audible backing stem adds harmonies to the instruments.
+  PART VOCALS keeps the full vocal stem, which is also what `vocals.ogg` is made from.
   Models download once to `~/.yarginator/models`. Swap one with `[separation] vocals_model = "..."`
-  (also `instruments_model`, `drums_model`; `audio-separator --list_models` lists them).
+  (also `instruments_model`, `drums_model`, `vocal_split_model`; `audio-separator --list_models` lists them).
 - `[paths] projects = "C:/.../In Progress"` in `~/.yarginator.toml` makes `--dest` optional.
 - After `--move-to`, run `reaper --force` there, because the REAPER project points at the old location.
 
@@ -60,7 +64,9 @@ Band - Song\
 on AMD cards DirectML is slower than the CPU for the vocal model). `--engine mvsep` (or
 `[separation] engine = "mvsep"`) uses [mvsep.com](https://mvsep.com)'s GPUs instead: one BS Roformer SW
 job for vocals / bass / drums / guitar / piano / other, `--best-vocals` adds a BS-RoFormer vocals /
-instrumental job, `--drum-split` a DrumSep job on the drum stem. MVSEP is opt-in only, because it
+instrumental job, `--drum-split` a DrumSep job on the drum stem, `--vocal-split` an MVSep Karaoke job
+(BS Roformer by the MVSep team) on the vocal stem. All four together are exactly `max_jobs_per_run`.
+MVSEP is opt-in only, because it
 uploads the song audio to a third party and uses your account's credits. The API token comes from the
 `MVSEP_API_TOKEN` environment variable.
 

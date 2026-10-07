@@ -187,7 +187,8 @@ def stem_lines(stems: dict[str, Path], base: Path) -> str:
 
 
 STEM_INSTRUMENTS = {"drums": "drums", "guitar": "guitar", "rhythm": "rhythm", "bass": "bass", "keys": "keys",
-                    "vocals": "vocals", "harm1": "harmonies", "harm2": "harmonies", "harm3": "harmonies"}
+                    "vocals": "vocals", "harm1": "harmonies", "harm2": "harmonies", "harm3": "harmonies",
+                    "lead_vocals": "vocals", "backing_vocals": "harmonies"}
 
 
 def suggest_instruments(stems: dict[str, Path]) -> list[str]:

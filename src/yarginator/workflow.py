@@ -26,6 +26,9 @@ from .project import AUDIO_EXTS, WORK_DIR, SongProject, detect_stems, suggest_in
 
 log = logging.getLogger(__name__)
 
+# stems that aren't part of the instrumental mix (finalize builds one when there's no instrumental stem)
+VOCAL_STEMS = ("song", "vocals", "lead_vocals", "backing_vocals", "harm1", "harm2", "harm3", "crowd")
+
 YARG_FILES = {"song.ini", "song.ogg", "vocals.ogg", "video.mp4", "video.webm", "notes.mid", "album.png",
               "album.jpg"}
 
@@ -145,6 +148,7 @@ def apply_stems(proj: SongProject, found: dict[str, Path], empty_db: float = 30.
     mix = proj.work / "source" / "mix.flac"
     song = {"song": mix} if mix.exists() else {k: v for k, v in proj.stems().items() if k == "song"}
     stems = {**song, **found}
+    # lead_vocals / backing_vocals stay in: an audible backing stem suggests harmonies
     not_parts = {"instrumental", "other", "crowd", "kick", "snare", "toms", "hihat", "ride", "crash"}
     instrument_stems = {k: v for k, v in found.items() if k not in not_parts}
     levels = stem_activity(instrument_stems)
@@ -157,9 +161,10 @@ def apply_stems(proj: SongProject, found: dict[str, Path], empty_db: float = 30.
 
 def separate_song(proj: SongProject, drum_split: bool = False, force: bool = False,
                   device: str | None = None, engine: str | None = None, best_vocals: bool | None = None,
-                  dry_run: bool = False) -> StemReport | None:
+                  dry_run: bool = False, vocal_split: bool | None = None) -> StemReport | None:
     """Separate source/mix.flac into <work>/stems (MVSEP or the local models), then register the
-    stems. ``dry_run`` (MVSEP only) reports the jobs and changes nothing."""
+    stems. ``vocal_split`` adds lead/backing vocal stems (default ``[separation] vocal_split``).
+    ``dry_run`` (MVSEP only) reports the jobs and changes nothing."""
     from .separate import pick_engine, separate, separate_mvsep
     mix = proj.work / "source" / "mix.flac"
     if not mix.exists():
@@ -169,11 +174,12 @@ def separate_song(proj: SongProject, drum_split: bool = False, force: bool = Fal
     cfg = proj.config.raw.get("separation", {})
     mv = proj.config.raw.get("mvsep", {})
     eng = pick_engine(engine or cfg.get("engine", "local"))
+    vsplit = bool(cfg.get("vocal_split", False) if vocal_split is None else vocal_split)
     if eng == "mvsep":
         log.info("separate: engine MVSEP (uploads %s to mvsep.com)", mix.name)
         found = separate_mvsep(mix, proj.dir("stems"), drum_split=drum_split, force=force,
                                best_vocals=bool(cfg.get("best_vocals", False) if best_vocals is None else best_vocals),
-                               settings=mv, dry_run=dry_run)
+                               settings=mv, dry_run=dry_run, vocal_split=vsplit)
         if dry_run:
             return None
     else:
@@ -181,7 +187,7 @@ def separate_song(proj: SongProject, drum_split: bool = False, force: bool = Fal
             raise ValueError("--dry-run is for the MVSEP engine (the local models send nothing anywhere)")
         models = {k: v for k, v in cfg.items() if k.endswith("_model")}
         found = separate(mix, proj.dir("stems"), drum_split=drum_split, models=models, force=force,
-                         device=device or cfg.get("device", "auto"))
+                         device=device or cfg.get("device", "auto"), vocal_split=vsplit)
     return apply_stems(proj, found)
 
 
@@ -198,7 +204,7 @@ def finalize(proj: SongProject, move_to: Path | None = None) -> tuple[list[str],
 
     instrumental, vocals = stems.get("instrumental"), stems.get("vocals")
     if vocals is not None and instrumental is None:
-        others = [p for k, p in stems.items() if k not in ("song", "vocals", "harm1", "harm2", "harm3", "crowd")]
+        others = [p for k, p in stems.items() if k not in VOCAL_STEMS]
         if others:
             instrumental = media.mix_to_flac(others, proj.dir("source") / "instrumental.flac")
             notes.append(f"no instrumental stem: mixed {len(others)} stems for song.ogg")

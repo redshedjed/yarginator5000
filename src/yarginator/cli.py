@@ -92,6 +92,9 @@ def _print_stems(rep):
                      "bass, guitar, keys, other) and register them")
 @args(lambda p: (_song(p), p.add_argument("--drum-split", action="store_true",
                                           help="also split drums into kick/snare/toms/hihat/ride/crash"),
+                 p.add_argument("--vocal-split", action="store_true", default=None,
+                                help="also split vocals into lead_vocals/backing_vocals (for HARM2/3); "
+                                     "default: [separation] vocal_split"),
                  p.add_argument("--force", action="store_true", help="redo passes that already have output"),
                  p.add_argument("--engine", choices=["local", "mvsep"],
                                 help="default: [separation] engine, else local. mvsep uploads the audio to mvsep.com"),
@@ -103,7 +106,7 @@ def _print_stems(rep):
 def cmd_separate(a):
     from . import workflow
     rep = workflow.separate_song(SongProject(a.song), a.drum_split, a.force, a.device, a.engine,
-                                 a.best_vocals or None, a.dry_run)
+                                 a.best_vocals or None, a.dry_run, a.vocal_split)
     if rep is not None:
         _print_stems(rep)
 

@@ -11,6 +11,7 @@ OUTPUTS = {  # model -> labels it writes, as audio-separator names them: "<input
     "voc.ckpt": ["Vocals", "Instrumental"],
     "six.yaml": ["Drums", "Bass", "Guitar", "Piano", "Other", "Vocals"],
     "drumsep.ckpt": ["kick", "snare", "toms", "hh", "ride", "crash"],
+    "kara.ckpt": ["Vocals", "Instrumental"],     # karaoke: lead vocals + everything else
 }
 
 
@@ -46,6 +47,21 @@ def fake_separator(monkeypatch):
 
 
 MODELS = {"vocals_model": "voc.ckpt", "instruments_model": "six.yaml", "drums_model": "drumsep.ckpt"}
+
+
+def test_vocal_split_runs_on_the_vocal_stem(tmp_path, fake_separator):
+    mix = tmp_path / "mix.flac"
+    mix.write_bytes(b"")
+    models = {**MODELS, "vocal_split_model": "kara.ckpt"}
+    out = sep_mod.separate(mix, tmp_path / "stems", models=models, device="cpu", vocal_split=True)
+    split = tmp_path / "stems" / "vocal_split"
+    assert out["lead_vocals"] == split / "lead_vocals.flac" and out["backing_vocals"] == split / "backing_vocals.flac"
+    assert out["vocals"] == tmp_path / "stems" / "vocals.flac"      # the full vocal stem stays
+    assert "kick" not in out                                         # no drum split asked for
+    assert [m for m, _ in fake_separator] == ["voc.ckpt", "six.yaml", "kara.ckpt"]
+    assert fake_separator[2][1].endswith("vocals.flac")
+    sep_mod.separate(mix, tmp_path / "stems", models=models, device="cpu", vocal_split=True)
+    assert len(fake_separator) == 3                                  # done passes are skipped
 
 
 def test_passes_chain_and_name_stems(tmp_path, fake_separator):

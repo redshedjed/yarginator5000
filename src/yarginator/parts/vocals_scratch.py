@@ -82,7 +82,7 @@ def _clamp(pitch: float) -> int:
 class VocalScratchCharter(PartCharter):
     key = "vocals-scratch"
     track_names = (instruments.VOCALS,)
-    stem_keys = ("vocals",)
+    stem_keys = ("vocals", "lead_vocals")
     description = "Vocal notes + lyrics + phrases from the stem and song.toml lyric text; handles growls and noise"
 
     def is_charted(self, track) -> bool:
@@ -197,6 +197,6 @@ def _harmony_scratch(n: int, stems: tuple[str, ...]) -> type[VocalScratchCharter
     }))
 
 
-Harmony1ScratchCharter = _harmony_scratch(1, ("harm1", "vocals"))
-Harmony2ScratchCharter = _harmony_scratch(2, ("harm2",))
-Harmony3ScratchCharter = _harmony_scratch(3, ("harm3", "harm2"))
+Harmony1ScratchCharter = _harmony_scratch(1, ("harm1", "lead_vocals", "vocals"))
+Harmony2ScratchCharter = _harmony_scratch(2, ("harm2", "backing_vocals"))
+Harmony3ScratchCharter = _harmony_scratch(3, ("harm3", "harm2", "backing_vocals"))

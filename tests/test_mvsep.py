@@ -261,3 +261,23 @@ def test_short_download_is_caught(env):
     env.server.get = lambda url, **kw: Resp(body=b"FLAC")          # truncated
     with pytest.raises(mvsep.MvsepError, match="expected"):
         env.client().separate(env.audio, JOB, env.tmp / "out")
+
+
+def test_vocal_split_keeps_lead_and_backing(env):
+    from yarginator import separate
+    env.server.files = ("vocals._karaoke_mt_6_vocals-lead.flac", "vocals._karaoke_mt_6_vocals-back.flac",
+                        "vocals._karaoke_mt_6_instrum-only.flac", "vocals._karaoke_mt_6_back-instrum.flac")
+    vocals = env.tmp / "stems" / "vocals.flac"
+    vocals.parent.mkdir()
+    vocals.write_bytes(b"vocal" * 100)
+    split = env.tmp / "stems" / "vocal_split"
+    want = {"lead_vocals", "backing_vocals"}
+    out = separate._mvsep_pass(env.client(), vocals, split, separate.MVSEP_KARAOKE, want, False,
+                               names=separate.MVSEP_KARAOKE_NAMES)
+    assert out == {k: split / f"{k}.flac" for k in want} and all(p.exists() for p in out.values())
+    assert sorted(f.name for f in split.iterdir()) == [".mvsep-49.json", "backing_vocals.flac", "lead_vocals.flac"]
+    create = api_calls(env.server, "separation/create")[0][3]["data"]
+    assert create["sep_type"] == "49" and str(create["add_opt2"]) == "0"     # the vocal stem is used as is
+    separate._mvsep_pass(env.client(), vocals, split, separate.MVSEP_KARAOKE, want, False,
+                         names=separate.MVSEP_KARAOKE_NAMES)
+    assert len(api_calls(env.server, "separation/create")) == 1      # done: not submitted again
