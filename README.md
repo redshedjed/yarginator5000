@@ -54,6 +54,30 @@ Band - Song\
 - `[paths] projects = "C:/.../In Progress"` in `~/.yarginator.toml` makes `--dest` optional.
 - After `--move-to`, run `reaper --force` there, because the REAPER project points at the old location.
 
+### Stem separation: MVSEP or local
+
+`yarginator separate` runs on your machine by default (`local`: CPU, or GPU after `yarginator setup-gpu`;
+on AMD cards DirectML is slower than the CPU for the vocal model). `--engine mvsep` (or
+`[separation] engine = "mvsep"`) uses [mvsep.com](https://mvsep.com)'s GPUs instead: one BS Roformer SW
+job for vocals / bass / drums / guitar / piano / other, `--best-vocals` adds a BS-RoFormer vocals /
+instrumental job, `--drum-split` a DrumSep job on the drum stem. MVSEP is opt-in only, because it
+uploads the song audio to a third party and uses your account's credits. The API token comes from the
+`MVSEP_API_TOKEN` environment variable.
+
+Guard rails (all in `mvsep.py`, tunable under `[mvsep]` in `~/.yarginator.toml`):
+
+| | |
+|---|---|
+| one job at a time | a lock file stops a second run from submitting in parallel |
+| no duplicate work | every job is keyed by file content + algorithm + options in `~/.yarginator/mvsep/ledger.json`; finished work is reused, an interrupted job is resumed, never resubmitted |
+| caps | `max_jobs_per_run = 4`, `max_jobs_per_day = 20` (rolling 24 h) |
+| pacing | `min_interval_s = 3` between requests; polls every 15 s backing off to 60 s; `job_timeout_s = 3600` |
+| retries | only status checks and downloads (3 tries with backoff); job creation is never retried; "too many requests" stops the run |
+| uploads | checked first: real audio, at least 5 s and 64 KB, at most `max_upload_mb = 150` |
+| downloads | HTTPS from mvsep.com hosts only |
+| privacy | the token is never logged or shown; jobs are deleted on the server after download; Ctrl+C cancels a queued job |
+| `--dry-run` | shows the jobs, sends nothing |
+
 ## Workflow: song folders by hand
 
 ```powershell

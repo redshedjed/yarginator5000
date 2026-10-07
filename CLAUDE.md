@@ -27,6 +27,10 @@ A Python CLI (`yarginator`) for charting songs for YARG. One song folder per son
   `init` folders have work == root. Paths in song.toml are relative to `work`; the chart and song.ini
   live in `root`. Don't put anything named notes.mid / song.ini, or audio named like a stem, in the song
   root besides YARG's own files.
+- `mvsep.py` is the only code that talks to mvsep.com, and every request goes through `Client` and its
+  guard rails (lock, ledger dedup, caps, pacing, no retried creates). MVSEP is opt-in (`engine = "mvsep"`),
+  never chosen because a token exists. Tests must never reach the network: `conftest.py` blanks the token
+  and blocks real sessions; fakes pass `session=` explicitly.
 - User defaults live in `~/.yarginator.toml` (deep-merged under song.toml; tests isolate it in `conftest.py`).
 - `src/yarginator/lighting/`: VENUE light shows. `cues.py` (vocabulary), `base.py` (registry and
   preset loading), `default.py`, and `presets/*.toml`.

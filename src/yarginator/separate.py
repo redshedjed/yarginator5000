@@ -168,9 +168,87 @@ def _run_pass(src: Path, out_dir: Path, model: str, want: tuple[str, ...], force
     return out
 
 
+# --- MVSEP (mvsep.com) -------------------------------------------------------------------------------
+# One job for the six stems (BS Roformer SW); optionally the best vocals/instrumental model; DrumSep
+# (MelBand Roformer, 6 stems) on our drum stem for the split. All jobs go through mvsep.Client and
+# its guard rails.
+MVSEP_STEMS = (63, {})
+MVSEP_VOCALS = (40, {"add_opt1": 81})                       # BS Roformer ver 2025.07
+MVSEP_DRUMS = (37, {"add_opt1": 7, "add_opt2": 1})          # MelBand Roformer 6 stems, input is drums only
+# (substring in MVSEP's file name, stem key): drum parts before "drum", "instrum" before "vocal"
+MVSEP_NAMES = [("kick", "kick"), ("snare", "snare"), ("tom", "toms"), ("hi-hat", "hihat"), ("hihat", "hihat"),
+               ("_hh", "hihat"), ("ride", "ride"), ("crash", "crash"), ("cymbal", "cymbals"), ("residual", None),
+               ("instrum", "instrumental"), ("vocal", "vocals"), ("bass", "bass"), ("drum", "drums"),
+               ("guitar", "guitar"), ("piano", "keys"), ("other", "other")]
+
+
+def mvsep_key(filename: str) -> str | None:
+    n = Path(filename).stem.lower()
+    return next((key for word, key in MVSEP_NAMES if word in n), None)
+
+
+def _mvsep_pass(client, src: Path, stems_dir: Path, job: tuple[int, dict], want: set[str], force: bool,
+                rename: dict[str, str] | None = None) -> dict[str, Path]:
+    from .mvsep import Job
+    import json
+    targets = {k: stems_dir / f"{k}.flac" for k in want}
+    # what this job produced last time: skip when those files are still here, even if MVSEP didn't
+    # return every stem we'd have liked (otherwise each run would submit the job again)
+    marker = stems_dir / f".mvsep-{job[0]}.json"
+    if not force and marker.exists():
+        done = [k for k in json.loads(marker.read_text("utf-8")) if k in targets]
+        if all(targets[k].exists() for k in done):
+            log.info("separate: mvsep sep_type %s already done (%s)", job[0], ", ".join(done))
+            return {k: targets[k] for k in done}
+    raw = stems_dir / "_mvsep"
+    files = client.separate(src, Job(job[0], dict(job[1])), raw)
+    if client.dry_run:
+        return {}
+    out: dict[str, Path] = {}
+    for f in files:
+        key = mvsep_key(f.name)
+        key = (rename or {}).get(key, key)
+        log.info("separate: mvsep %s -> %s", f.name, key or "(not used)")
+        if key in targets:
+            f.replace(targets[key])
+            out[key] = targets[key]
+    shutil.rmtree(raw, ignore_errors=True)
+    marker.write_text(json.dumps(sorted(out)), encoding="utf-8")
+    missing = sorted(set(want) - set(out))
+    if missing:
+        log.info("separate: mvsep sep_type %s gave no %s", job[0], ", ".join(missing))
+    return out
+
+
+def separate_mvsep(mix: Path, stems_dir: Path, drum_split: bool = False, force: bool = False,
+                   best_vocals: bool = False, settings: dict | None = None, dry_run: bool = False) -> dict[str, Path]:
+    from .mvsep import Client, Limits, find_token
+    cfg = settings or {}
+    client = Client(find_token(cfg), Limits.from_config(cfg), dry_run=dry_run)
+    out = _mvsep_pass(client, mix, stems_dir, MVSEP_STEMS,
+                      {"vocals", "bass", "drums", "guitar", "keys", "other", "instrumental"} - ({"vocals", "instrumental"} if best_vocals else set()),
+                      force)
+    if best_vocals:
+        # model 40 calls its instrumental "other"
+        out.update(_mvsep_pass(client, mix, stems_dir, MVSEP_VOCALS, {"vocals", "instrumental"}, force,
+                               rename={"other": "instrumental"}))
+    if drum_split and "drums" in out:
+        out.update(_mvsep_pass(client, out["drums"], stems_dir / DRUM_SPLIT_DIR, MVSEP_DRUMS,
+                               {"kick", "snare", "toms", "hihat", "ride", "crash"}, force))
+    return out
+
+
+def pick_engine(engine: str) -> str:
+    """``local`` (default) or ``mvsep``. MVSEP is opt-in only: it uploads audio to a third party and
+    spends credits, so having a token set up is never enough on its own to use it."""
+    if engine not in ("mvsep", "local"):
+        raise ValueError(f"[separation] engine must be local or mvsep, not {engine!r}")
+    return engine
+
+
 def separate(mix: Path, stems_dir: Path, drum_split: bool = False, models: dict | None = None,
              force: bool = False, device: str = "auto") -> dict[str, Path]:
-    """Run the passes on ``mix``; returns {stem key: file} for everything produced."""
+    """Run the local passes on ``mix``; returns {stem key: file} for everything produced."""
     m = {**DEFAULTS, **(models or {})}
     dev = pick_device(device)
     out = _run_pass(mix, stems_dir, m["vocals_model"], PASSES["vocals"][1], force, dev)

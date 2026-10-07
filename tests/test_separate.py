@@ -77,7 +77,7 @@ def test_separate_song_registers_stems(tmp_path, fake_separator):
     text = text.replace("[separation]\n", "[separation]\n" + "".join(f'{k} = "{v}"\n' for k, v in MODELS.items()))
     proj.config_path.write_text(text, encoding="utf-8")
     proj.reload()
-    rep = separate_song(proj, device="cpu")
+    rep = separate_song(proj, device="cpu", engine="local")
     assert rep.empty == ["guitar"]
     assert rep.instruments == ["drums", "bass", "keys", "vocals"]
     proj = SongProject(song)

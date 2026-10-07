@@ -93,12 +93,19 @@ def _print_stems(rep):
 @args(lambda p: (_song(p), p.add_argument("--drum-split", action="store_true",
                                           help="also split drums into kick/snare/toms/hihat/ride/crash"),
                  p.add_argument("--force", action="store_true", help="redo passes that already have output"),
+                 p.add_argument("--engine", choices=["local", "mvsep"],
+                                help="default: [separation] engine, else local. mvsep uploads the audio to mvsep.com"),
+                 p.add_argument("--best-vocals", action="store_true",
+                                help="MVSEP: a second job with the best vocals/instrumental model"),
+                 p.add_argument("--dry-run", action="store_true", help="MVSEP: show the jobs, send nothing"),
                  p.add_argument("--device", choices=["auto", "cpu", "gpu"],
-                                help="default: [separation] device, else auto (GPU if `setup-gpu` was run)")))
+                                help="local engine: default [separation] device, else auto (GPU if `setup-gpu` was run)")))
 def cmd_separate(a):
     from . import workflow
-    rep = workflow.separate_song(SongProject(a.song), a.drum_split, a.force, a.device)
-    _print_stems(rep)
+    rep = workflow.separate_song(SongProject(a.song), a.drum_split, a.force, a.device, a.engine,
+                                 a.best_vocals or None, a.dry_run)
+    if rep is not None:
+        _print_stems(rep)
 
 
 @command("setup-gpu", "install GPU stem separation (DirectML: AMD / NVIDIA / Intel) in its own environment")

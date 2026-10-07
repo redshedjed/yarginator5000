@@ -156,18 +156,32 @@ def apply_stems(proj: SongProject, found: dict[str, Path], empty_db: float = 30.
 
 
 def separate_song(proj: SongProject, drum_split: bool = False, force: bool = False,
-                  device: str | None = None) -> StemReport:
-    """Separate source/mix.flac into <work>/stems with the built-in models, then register the stems."""
-    from .separate import separate
+                  device: str | None = None, engine: str | None = None, best_vocals: bool | None = None,
+                  dry_run: bool = False) -> StemReport | None:
+    """Separate source/mix.flac into <work>/stems (MVSEP or the local models), then register the
+    stems. ``dry_run`` (MVSEP only) reports the jobs and changes nothing."""
+    from .separate import pick_engine, separate, separate_mvsep
     mix = proj.work / "source" / "mix.flac"
     if not mix.exists():
         mix = proj.stems().get("song")
         if mix is None:
             raise FileNotFoundError("nothing to separate: no source/mix.flac and no [stems] song")
     cfg = proj.config.raw.get("separation", {})
-    models = {k: v for k, v in cfg.items() if k.endswith("_model")}
-    found = separate(mix, proj.dir("stems"), drum_split=drum_split, models=models, force=force,
-                     device=device or cfg.get("device", "auto"))
+    mv = proj.config.raw.get("mvsep", {})
+    eng = pick_engine(engine or cfg.get("engine", "local"))
+    if eng == "mvsep":
+        log.info("separate: engine MVSEP (uploads %s to mvsep.com)", mix.name)
+        found = separate_mvsep(mix, proj.dir("stems"), drum_split=drum_split, force=force,
+                               best_vocals=bool(cfg.get("best_vocals", False) if best_vocals is None else best_vocals),
+                               settings=mv, dry_run=dry_run)
+        if dry_run:
+            return None
+    else:
+        if dry_run:
+            raise ValueError("--dry-run is for the MVSEP engine (the local models send nothing anywhere)")
+        models = {k: v for k, v in cfg.items() if k.endswith("_model")}
+        found = separate(mix, proj.dir("stems"), drum_split=drum_split, models=models, force=force,
+                         device=device or cfg.get("device", "auto"))
     return apply_stems(proj, found)
 
 
